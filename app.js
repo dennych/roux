@@ -354,8 +354,7 @@
     el('paintMsg').innerHTML = '已重设：请重新填色，然后点「校验并开始还原」';
     S.plan = null; S.flat = []; S.cursor = 0; S.curMoveOfStep = -1;
     S.state = R.solved();
-    el('scrText').textContent = '（未载入）';
-    el('scrInput').value = '';
+    if (el('planLabel')) el('planLabel').textContent = '当前：未载入（请在下面「手动填色」填 54 格，或粘贴状态串后点「解析并载入」）';
     if (el('nowMove')) el('nowMove').textContent = '';
     paintAll();
     if (S.mode3d) renderCube();
@@ -389,111 +388,6 @@
       el('importMsg').scrollIntoView && el('importMsg').scrollIntoView({ behavior: 'smooth', block: 'center' });
       toast('校验没通过：请看红字说明');
     }
-  }
-
-  // ================= 拍照 / 选图 =================
-  const CAM = { stream: null, shots: [null, null] };
-
-  function camMsg(text, isErr) {
-    el('camMsg').innerHTML = isErr ? `<span style="color:#ff8080">${text}</span>` : text;
-  }
-
-  function renderShots() {
-    const row = el('shotRow');
-    (row._urls || []).forEach((u) => URL.revokeObjectURL(u));
-    row._urls = [];
-    row.innerHTML = '';
-    const labels = ['1 上/前/右', '2 上/后/左'];
-    CAM.shots.forEach((blob, i) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      row._urls.push(url);
-      const d = document.createElement('div');
-      d.className = 'shot';
-      d.innerHTML = `<img src="${url}" alt="photo-${i + 1}"><b>${labels[i]}</b>`;
-      const x = document.createElement('button');
-      x.className = 'x ghost';
-      x.textContent = '×';
-      x.onclick = () => { CAM.shots[i] = null; renderShots(); };
-      d.appendChild(x);
-      row.appendChild(d);
-    });
-  }
-
-  async function startCamera() {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('此浏览器不支持摄像头接口');
-      CAM.stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false,
-      });
-      const v = el('cam');
-      v.srcObject = CAM.stream;
-      await v.play();
-      document.querySelector('.camwrap').classList.add('on');
-      camMsg('摄像头已打开。把魔方摆成 45°，让「上/前/右」三面落在虚线框内，再点「拍第 1 张」。');
-    } catch (e) {
-      camMsg('打不开摄像头：' + (e && e.message ? e.message : e)
-        + '。可能是权限被拒，或页面不是安全上下文。可改用 <b>从文件选择</b>，或用 <code>python3 -m http.server</code> 起个本地地址打开本页。', true);
-    }
-  }
-
-  function stopCamera() {
-    if (CAM.stream) { CAM.stream.getTracks().forEach((t) => t.stop()); CAM.stream = null; }
-    document.querySelector('.camwrap').classList.remove('on');
-  }
-
-  function takeShot(i) {
-    const v = el('cam');
-    if (!v.videoWidth) { camMsg('摄像头还没准备好（先点「打开摄像头」）', true); return; }
-    const c = document.createElement('canvas');
-    c.width = v.videoWidth; c.height = v.videoHeight;
-    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-    c.toBlob((blob) => {
-      CAM.shots[i] = blob;
-      renderShots();
-      camMsg(`已拍第 ${i + 1} 张（${c.width}×${c.height}）。` + (i === 0 ? '接着把魔方绕竖直轴转 180°，再拍第 2 张。' : '点「写入 photos/ 目录」保存。'));
-    }, 'image/jpeg', 0.92);
-  }
-
-  function pickPhotos() {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = 'image/*';
-    inp.multiple = true;
-    inp.onchange = () => {
-      const fs = Array.from(inp.files || []).slice(0, 2);
-      fs.forEach((f, i) => { CAM.shots[i] = f; });
-      renderShots();
-      if (fs.length) camMsg(`已选择 ${fs.length} 张照片（按选择顺序当作第 1、2 张）。`);
-    };
-    inp.click();
-  }
-
-  async function savePhotos() {
-    const list = CAM.shots.filter(Boolean);
-    if (!list.length) { camMsg('还没有照片：先拍照或从文件选择。', true); return; }
-    if (window.showDirectoryPicker) {
-      try {
-        const dir = await window.showDirectoryPicker({ id: 'roux-photos', mode: 'readwrite' });
-        for (let i = 0; i < CAM.shots.length; i++) {
-          if (!CAM.shots[i]) continue;
-          const fh = await dir.getFileHandle(`photo-${i + 1}.jpg`, { create: true });
-          const w = await fh.createWritable();
-          await w.write(CAM.shots[i]);
-          await w.close();
-        }
-        camMsg('✅ 已写入 photo-1.jpg / photo-2.jpg。到对话里说一声"照片放好了"就行（我会读 photos/ 目录）。');
-        return;
-      } catch (e) { /* 用户取消或无权限 → 走下载 */ }
-    }
-    CAM.shots.forEach((b, i) => {
-      if (!b) return;
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(b);
-      a.download = `photo-${i + 1}.jpg`;
-      a.click();
-    });
-    camMsg('此浏览器不支持直接写目录，已改为下载 —— 请把 photo-1.jpg / photo-2.jpg 移到 <code>roux/photos/</code> 目录，然后跟我说一声。');
   }
 
   // ================= 公式表 =================
@@ -1023,7 +917,7 @@
     renderAll();
   }
 
-  // ================= 打乱与计划 =================
+  // ================= 方案与计划 =================
   function parseScramble(text) {
     const toks = text.trim().split(/\s+/).filter(Boolean);
     const out = [];
@@ -1078,8 +972,7 @@
     rebuildFlat();
     S.cursor = 0;
     S.curMoveOfStep = -1;
-    el('scrText').textContent = label;
-    el('scrInput').value = label;
+    if (el('planLabel')) el('planLabel').textContent = '当前：' + label;
     const h = location.hash || '';
     const m = /cursor=(\d+)/.exec(h);
     if (m) S.cursor = Math.max(0, Math.min(S.flat.length, parseInt(m[1], 10)));
@@ -1306,7 +1199,8 @@
     return true;
   }
 
-  function newPlan(scrambleMoves) {
+  /** 由打乱序列生成方案 (仅 #scr= 调试链接使用, 界面已无打乱功能) */
+  function planFromScramble(scrambleMoves, label) {
     S.runToken++;                       // 中止正在进行的播放/动画
     S.playing = false; S.animating = false; S.paused = false; releasePause();
     el('nowMove').textContent = '';
@@ -1317,7 +1211,7 @@
       try {
         const plan = R.buildPlan(scrambleMoves);
         const h = location.hash || '';
-        loadPlan(plan, scrambleMoves.join(' '));
+        loadPlan(plan, label || ('打乱 ' + scrambleMoves.join(' ')));
         const mv = /move=(\d+)/.exec(h);
         if (mv) { S.curMoveOfStep = parseInt(mv[1], 10); renderNext(); }
         // 调试: #auto=N 自动连点 N 次「下一步」(用于验证带动画的执行路径)
@@ -1328,13 +1222,12 @@
     }, 20);
   }
 
-  function randomPlan() { newPlan(R.randomScramble(22)); }
 
   window.addEventListener('unhandledrejection', (e) => {
     document.body.setAttribute('data-reject', String((e.reason && e.reason.stack) || e.reason));
   });
 
-  const BUILD = 'v5（修正 F/B 动画转向 · 渲染自愈）';
+  const BUILD = 'v6（移除拍照/打乱 · 只输入你的魔方）';
 
   // ================= 事件绑定 =================
   buildCubies();
@@ -1350,8 +1243,6 @@
   el('btnPrev').onclick = prevStep;
   el('btnPlayStage').onclick = playStage;
   el('btnPause').onclick = togglePause;
-  el('btnNew').onclick = () => { if (!S.animating) randomPlan(); };
-  el('btnReset').onclick = () => { if (!S.animating) { S.cursor = 0; S.curMoveOfStep = -1; renderAll(); } };
   el('btnPrint').onclick = () => window.open('roux-formulas-print.html', '_blank');
   el('btnPaintValidate').onclick = paintValidate;
   el('btnResetAll').onclick = resetAll;
@@ -1363,13 +1254,6 @@
     delete el('paintMsg').dataset.keep;
     renderPainter();
   };
-  el('btnCam').onclick = startCamera;
-  el('btnCamOff').onclick = stopCamera;
-  el('btnShot1').onclick = () => takeShot(0);
-  el('btnShot2').onclick = () => takeShot(1);
-  el('btnPick').onclick = pickPhotos;
-  el('btnSavePhotos').onclick = savePhotos;
-  window.addEventListener('beforeunload', stopCamera);
   el('btnImport').onclick = () => {
     if (S.animating) return;
     const parsed = R.stringToFacelets(el('stateInput').value);
@@ -1417,16 +1301,6 @@
     };
   }());
   el('chkAnim').onchange = (e) => { S.anim = e.target.checked; };
-  el('btnCopy').onclick = async () => {
-    try { await navigator.clipboard.writeText(el('scrText').textContent); toast('打乱已复制'); }
-    catch (e) { toast('复制失败，请手动选择'); }
-  };
-  el('btnApply').onclick = () => {
-    if (S.animating) return;
-    const r = parseScramble(el('scrInput').value);
-    if (r.error) { toast(r.error); return; }
-    newPlan(r.moves);
-  };
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;
     if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextStep(); }
@@ -1471,9 +1345,17 @@
     const sm = /scr=([^&]+)/.exec(h);
     if (sm) {
       const r = parseScramble(decodeURIComponent(sm[1]).replace(/\+/g, ' '));
-      if (!r.error) { newPlan(r.moves); tick(); return; }
+      if (!r.error) { planFromScramble(r.moves, '打乱 ' + r.moves.join(' ')); tick(); return; }
     }
-    randomPlan();
+    // 没有带参数: 从"未载入"开始 —— 请用下面的「手动填色」或粘贴状态串
+    S.plan = null; S.flat = []; S.cursor = 0; S.curMoveOfStep = -1;
+    S.state = R.solved();
+    if (el('planLabel')) {
+      el('planLabel').textContent = '当前：未载入 —— 在「手动填色」填满 54 格后点「校验并开始还原」，或粘贴状态串后点「解析并载入」';
+    }
+    paintAll();
+    if (S.mode3d) renderCube();
+    renderTabs(); renderNext(); renderStatus(); renderPlan();
     tick();
   }());
 }());
