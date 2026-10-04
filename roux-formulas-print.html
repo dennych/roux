@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>桥式（Roux）公式表 · 打印版</title>
+<style>
+  :root { --ink: #111; --dim: #555; --line: #bbb; --soft: #f2f2f2; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: var(--ink);
+    font: 13px/1.55 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  .page { width: 190mm; margin: 12mm auto; }
+  h1 { font-size: 21px; margin: 0 0 2px; }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 10px; }
+  h2 { font-size: 14px; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 2px solid var(--ink); }
+  h3 { font-size: 12.5px; margin: 10px 0 4px; color: var(--dim); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+  th, td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; font-size: 12px; }
+  td.alg { font-family: ui-monospace, Menlo, monospace; font-weight: 600; white-space: nowrap; }
+  td.num { text-align: center; white-space: nowrap; }
+  .legend { border: 1px solid var(--line); background: #fafafa; padding: 7px 9px; margin: 6px 0 0; font-size: 12.5px; }
+  .legend b { font-weight: 700; }
+  .kv { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; }
+  .tip { margin: 4px 0 0; padding-left: 18px; }
+  .tip li { margin: 2px 0; }
+  .foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--dim); font-size: 11.5px; }
+  .cols { display: flex; gap: 12px; page-break-inside: avoid; }
+  .cols > div { flex: 1 1 0; }
+  .log td { height: 19px; }
+  @page { size: A4; margin: 12mm; }
+  @media print {
+    body { font-size: 12px; }
+    .page { width: auto; margin: 0; }
+    h2 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+    .log { page-break-inside: auto; }
+    .cols { page-break-inside: avoid; }
+    .noprint { display: none; }
+  }
+  .noprint { text-align: center; margin: 10px 0 0; color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>桥式（Roux）公式表</h1>
+  <div class="sub">打印版 · 配套工具：<b>index.html</b>（可拖动 3D 魔方、逐步演示、每步时长可调）</div>
+
+  <div class="legend">
+    <div class="kv">
+      <span><b>朝向</b>：黄顶 U / 白底 D / <b>红前 F</b> / 橙后 B / <b>绿右 R</b> / <b>蓝左 L</b>（左右桥＝蓝 · 绿）</span>
+    </div>
+    <div class="kv" style="margin-top:4px">
+      <span><b>记法</b>：字母＝该层顺时针（从这面外侧看）；<b>'</b>＝逆时针；<b>2</b>＝180°；<b>M</b>＝中间层（跟 L 同向）；<b>r</b>＝右两层（＝ R + M'）</span>
+    </div>
+  </div>
+
+  <h2>一、四步总览</h2>
+  <table>
+    <tr><th style="width:15%">步骤</th><th style="width:44%">目标</th><th style="width:18%">允许的转动</th><th style="width:23%">平均步数（引擎实测）</th></tr>
+    <tr>
+      <td><b>1 左桥</b><br>FB</td>
+      <td>左侧 1×2×3（<b>蓝</b>面）：L 中心 + DL / FL / BL 三条棱 + DFL / DBL 两个角</td>
+      <td>任意</td>
+      <td class="num">7.0 步<br>（最优最长 9 步）</td>
+    </tr>
+    <tr>
+      <td><b>2 右桥</b><br>SB</td>
+      <td>右侧 1×2×3（<b>绿</b>面）：R 中心 + DR / FR / BR 三条棱 + DFR / DRB 两个角，<b>不破坏左桥</b></td>
+      <td>U R M r</td>
+      <td class="num">10.1 步</td>
+    </tr>
+    <tr>
+      <td><b>3 CMLL</b></td>
+      <td>顶层（<b>黄</b>）4 个角块的<b>朝向 + 位置</b>（棱块先不管）</td>
+      <td>任意（本表只用 3 条公式）</td>
+      <td class="num">约 4.4 条公式</td>
+    </tr>
+    <tr>
+      <td><b>4 LSE</b></td>
+      <td>剩余 6 条棱 + 4 个中心块，整颗还原</td>
+      <td>只 U M</td>
+      <td class="num">11.2 步<br>（最优平均 10.85）</td>
+    </tr>
+  </table>
+
+  <h2>二、CMLL 公式（顶层角块：先朝向，后位置）</h2>
+  <table>
+    <tr><th style="width:16%">公式</th><th style="width:40%">转动</th><th style="width:44%">作用 / 什么时候用</th></tr>
+    <tr>
+      <td><b>AUF</b><br><span style="color:#555">顶层对位</span></td>
+      <td class="alg">U&nbsp;&nbsp;/&nbsp;&nbsp;U2&nbsp;&nbsp;/&nbsp;&nbsp;U'</td>
+      <td>把要处理的角块转到公式对应的位置。每条公式前都可以先 AUF。</td>
+    </tr>
+    <tr>
+      <td><b>小鱼</b><br><span style="color:#555">Sune</span></td>
+      <td class="alg">R U R' U R U2 R'</td>
+      <td><b>角块朝向</b>。四个角的黄色没有都朝上时用它；顺带会换角块位置（位置留给下面两条）。</td>
+    </tr>
+    <tr>
+      <td><b>反小鱼</b><br><span style="color:#555">Antisune</span></td>
+      <td class="alg">R U2 R' U' R U' R'</td>
+      <td><b>角块朝向</b>，与小鱼类互为反向；和小鱼配合（各可重复、可夹 AUF）能做出全部 7 种朝向情况。</td>
+    </tr>
+    <tr>
+      <td><b>T-perm</b></td>
+      <td class="alg">R U R' U' R' F R2 U' R' U' R U R' F'</td>
+      <td><b>角块位置</b>：相邻两角互换（URF↔UBR），同时换两条棱（棱交给 LSE 收拾）。朝向已做好、位置不对时用。</td>
+    </tr>
+    <tr>
+      <td>Y-perm<br><span style="color:#555">备用</span></td>
+      <td class="alg">F R U' R' U' R U R' F' R U R' U' R' F R F'</td>
+      <td><b>角块位置</b>：对角两角互换（URF↔ULB）。与 T-perm 二选一，能让 CMLL 更短。</td>
+    </tr>
+  </table>
+  <div class="legend">
+    以上 3 条公式（小鱼 / 反小鱼 / T-perm）+ AUF 由程序穷举验证：可覆盖<b>全部 648 种</b>顶层角块情况；
+    并且每条公式都<b>不会破坏左右两桥</b>。
+  </div>
+
+  <h2>三、LSE 参考公式（只转 M、U；本工具不依赖它们，认识一下）</h2>
+  <table>
+    <tr><th style="width:16%">公式</th><th style="width:40%">转动</th><th style="width:44%">作用（引擎实测）</th></tr>
+    <tr><td>U-perm</td><td class="alg">M2 U M U2 M' U M2</td><td>顶层三棱循环 UR→UF→UL，角块与中心不动</td></tr>
+    <tr><td>H-perm</td><td class="alg">M2 U2 M2 U2</td><td>UF↔UB、DF↔DB 两对棱互换，角块不动</td></tr>
+    <tr><td>翻两棱</td><td class="alg">M' U M' U M' U2 M U M U M U2</td><td>把 UF、UB 两条棱原地翻正（出现 2 条坏棱时）</td></tr>
+  </table>
+
+  <h2>四、要点与小抄</h2>
+  <div class="cols">
+    <div>
+      <h3>CMLL 两阶段</h3>
+      <ol class="tip">
+        <li>先做<b>朝向</b>：小鱼 / 反小鱼，各可重复，前面可加 AUF，最多 4 条。</li>
+        <li>再做<b>位置</b>：AUF + T-perm（邻角换）或 Y-perm（对角换），最多 3 条。</li>
+        <li>不想自己判断就用工具：它会直接告诉你下一步是哪条公式。</li>
+      </ol>
+      <h3>LSE 顺序（不用背）</h3>
+      <ol class="tip">
+        <li><b>4a 色相</b>：把 6 条棱的"坏棱"全部调正（判断：含黄/白的棱，黄白面朝上或朝下即为好）。</li>
+        <li><b>4b UL·UR</b>：把左右两条上棱放回位置。</li>
+        <li><b>4c M 层</b>：收掉中间层的棱与中心。</li>
+      </ol>
+    </div>
+    <div>
+      <h3>最容易错的两点</h3>
+      <ul class="tip">
+        <li><b>M 的方向</b>：M 跟 <b>L</b> 同向（从上往下看是逆时针），不是跟 R。</li>
+        <li><b>r</b>（右两层）＝ R + M'，等于把右面和中间层一起朝 R 方向转。</li>
+      </ul>
+      <h3>练习建议</h3>
+      <ul class="tip">
+        <li>先只练左桥（不看时间，练到平均 8 步内、能看到第一块就规划）。</li>
+        <li>再练左桥+右桥（全程只用 U R M r，左桥不能动）。</li>
+        <li>然后背这 3 条 CMLL，最后练 LSE 的"坏棱"判断。</li>
+        <li>工具里把"每步转动"调到 1.5–2 秒，跟着屏幕转，先把流程走顺。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>五、练习记录</h2>
+  <table class="log">
+    <tr><th style="width:13%">日期</th><th style="width:30%">打乱</th><th style="width:9%">左桥</th><th style="width:9%">右桥</th><th style="width:12%">CMLL 公式</th><th style="width:9%">LSE</th><th style="width:9%">总步数</th><th>备注</th></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+  </table>
+
+  <div class="foot">
+    数据来源：本地引擎穷举/搜索实测（左桥 5,322,240 状态全表；右桥 <b>⟨U,R,M,r⟩</b> 1,088,640 状态全表；LSE 23,040 状态最优表；
+    CMLL 648 状态公式集验证）。 页面直接打印或另存为 PDF 即可，A4 一页半左右。
+  </div>
+
+  <div class="noprint">提示：用浏览器「打印」→ 目标选「另存为 PDF」，缩放默认 100% 即可。</div>
+</div>
+</body>
+</html>

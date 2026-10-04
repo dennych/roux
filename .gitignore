@@ -1,0 +1,12 @@
+# 个人照片 / 屏幕截图（含本人肖像与屏幕内容）——默认不上传
+photos/*.jpg
+photos/*.jpeg
+photos/*.png
+photos/*.heic
+photos/*.webp
+
+# 系统与缓存
+.DS_Store
+**/.DS_Store
+__pycache__/
+*.pyc

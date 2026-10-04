@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>桥式（Roux）分步还原 · 可视化练习</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel2: #1f232c;
+    --line: #2b3140;
+    --text: #e8ecf3;
+    --dim: #98a2b3;
+    --accent: #4c9aff;
+    --ok: #35c46a;
+    --pitch: 50px;          /* 每格间距 */
+    --half: 24px;           /* 小方块半边长 (48px 方块, 留 2px 缝隙) */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; font-weight: 600; }
+  header .sub { color: var(--dim); font-size: 12px; }
+  .wrap { display: flex; gap: 18px; padding: 18px 20px 40px; align-items: flex-start; flex-wrap: wrap; }
+  .left { flex: 1 1 400px; min-width: 340px; }
+  .right { flex: 1 1 420px; min-width: 340px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--dim); font-weight: 600; letter-spacing: .04em; }
+
+  /* ---------- 3D 魔方: 26 个小方块拼装 ---------- */
+  .scene {
+    position: relative; height: 360px; border-radius: 12px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 24%, #242c3d, #0b0e14 70%);
+    cursor: grab; user-select: none; touch-action: none;
+    perspective: 1250px; perspective-origin: 50% 42%;
+  }
+  .scene:active { cursor: grabbing; }
+  .stage3d { width: calc(var(--pitch) * 3); height: calc(var(--pitch) * 3); position: relative; transform-style: preserve-3d; }
+  .cube { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; }
+  .cubie {
+    position: absolute; left: 50%; top: 50%;
+    width: calc(var(--half) * 2); height: calc(var(--half) * 2);
+    margin: calc(var(--half) * -1) 0 0 calc(var(--half) * -1);
+    transform-style: preserve-3d;
+  }
+  .cubie-face {
+    position: absolute; width: 100%; height: 100%; border-radius: 7px; background: #07090c;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
+    backface-visibility: hidden;
+  }
+  .cubie-face .stick {
+    position: absolute; inset: 3px; border-radius: 6px; background: #111;
+    box-shadow: inset 0 -3px 7px rgba(0,0,0,.42), inset 0 2px 4px rgba(255,255,255,.22);
+  }
+  .cubie-face[data-dir="U"] { transform: rotateX(90deg)  translateZ(var(--half)); }
+  .cubie-face[data-dir="D"] { transform: rotateX(-90deg) translateZ(var(--half)); }
+  .cubie-face[data-dir="F"] { transform: translateZ(var(--half)); }
+  .cubie-face[data-dir="B"] { transform: rotateY(180deg) translateZ(var(--half)); }
+  .cubie-face[data-dir="R"] { transform: rotateY(90deg)  translateZ(var(--half)); }
+  .cubie-face[data-dir="L"] { transform: rotateY(-90deg) translateZ(var(--half)); }
+  /* 逐面光照: 拖动时只改这 6 个变量, 保持流畅 */
+  .cubie-face[data-dir="U"] .stick { filter: brightness(var(--lu, 1)); }
+  .cubie-face[data-dir="D"] .stick { filter: brightness(var(--ld, .7)); }
+  .cubie-face[data-dir="F"] .stick { filter: brightness(var(--lf, .95)); }
+  .cubie-face[data-dir="B"] .stick { filter: brightness(var(--lb, .7)); }
+  .cubie-face[data-dir="R"] .stick { filter: brightness(var(--lr, .85)); }
+  .cubie-face[data-dir="L"] .stick { filter: brightness(var(--ll, .78)); }
+  .cubie.target .stick { box-shadow: 0 0 0 2px #eaf2ff, 0 0 13px rgba(76,154,255,.9), inset 0 -3px 7px rgba(0,0,0,.42); }
+  .turn { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; }
+  .shadow {
+    position: absolute; left: 50%; bottom: 40px; width: 215px; height: 32px; margin-left: -107px;
+    border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0,0,0,.62), rgba(0,0,0,0) 70%);
+    filter: blur(3px); pointer-events: none;
+  }
+
+  /* ---------- 平面展开图 (兜底 / 核对用) ---------- */
+  .netview { display: none; padding: 6px 0; }
+  .scene.net .stage3d, .scene.net .shadow { display: none; }
+  .scene.net .netview { display: block; }
+  .scene.net .netnote { display: block; }
+  .netnote { display: none; position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; color: var(--dim); font-size: 11.5px; }
+  .scene.net { height: 470px; }
+  .net { position: relative; width: 510px; height: 430px; }
+  .net .nwrap { position: absolute; width: 124px; }
+  .net .nface { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 3px; }
+  .net .nst { border-radius: 4px; box-shadow: inset 0 -2px 5px rgba(0,0,0,.35); }
+  .net .nlabel { color: var(--dim); font-size: 11px; text-align: center; margin-top: 5px; }
+
+  .viewbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 8px; }
+
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #46506a; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  @keyframes flashbtn { 0%,100% { box-shadow: 0 0 0 0 rgba(76,154,255,0); } 50% { box-shadow: 0 0 0 6px rgba(76,154,255,.45); } }
+  button.flash { animation: flashbtn .6s ease-in-out 3; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06101f; font-weight: 700; font-size: 15px; padding: 12px 18px; }
+  button.ghost { background: transparent; }
+  button.on { background: #24405f; border-color: var(--accent); }
+  label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--dim); font-size: 12.5px; cursor: pointer; }
+
+  .scramble { font: 600 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1 1 auto; }
+
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; font-size: 13px; }
+  .tab .st { font-size: 11px; color: var(--dim); margin-left: 4px; }
+  .tab.active { border-color: var(--accent); background: #1b2c42; }
+  .tab.done { border-color: var(--ok); }
+  .tab.done .st { color: var(--ok); }
+
+  .nextbox { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .nextname { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .nextname .stage { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 6px; }
+  .moves { font: 700 18px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; word-break: break-all; }
+  .moves span.cur { color: var(--accent); text-decoration: underline; }
+  .moves span.m180 { color: #ffd166; font-weight: 800; }
+  .moves span.m180.cur { color: #ffd166; }
+  .hint { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+  .nowmove { font: 700 15px/1.6 ui-monospace, Menlo, monospace; color: var(--accent); min-height: 24px; margin-top: 6px; }
+  .nowmove .big { font-size: 22px; }
+  input[type=range] { width: 120px; accent-color: var(--accent); vertical-align: -3px; }
+
+  .status { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .st-item { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
+  .st-item b { display: block; color: var(--dim); font-weight: 500; font-size: 11.5px; }
+  .yes { color: var(--ok); } .no { color: var(--dim); }
+
+  .plan { max-height: 320px; overflow: auto; }
+  .plan .grp > .gt { font-size: 12px; color: var(--dim); margin: 6px 0; }
+  .plan .item { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+  .plan .item:hover { background: #1b1f28; }
+  .plan .item.done { opacity: .5; }
+  .plan .item.cur { background: #1b2c42; outline: 1px solid var(--accent); }
+  .plan .item .mv { font-family: ui-monospace, Menlo, monospace; color: var(--dim); }
+  .pal { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; font-size: 12.5px; }
+  .pal i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .pal.on { border-color: var(--accent); background: #1b2c42; }
+  .pnet { position: relative; width: 520px; height: 442px; }
+  .pnet .pwrap { position: absolute; width: 124px; }
+  .pnet .pface { display: grid; grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(3, 40px); gap: 2px; }
+  .pnet .pcell { border-radius: 4px; background: #22262e; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .pnet .pcell:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .pnet .plabel { color: var(--dim); font-size: 10px; text-align: center; }
+  .camwrap { position: relative; width: 240px; height: 240px; margin: 10px 0; border-radius: 10px; overflow: hidden;
+             background: #0b0e13; display: none; border: 1px solid var(--line); }
+  .camwrap.on { display: block; }
+  .camwrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .camwrap .guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .shot { position: relative; }
+  .shot img { width: 104px; height: 104px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .shot b { position: absolute; left: 5px; top: 5px; font-size: 11px; background: rgba(0,0,0,.65); padding: 1px 6px; border-radius: 5px; }
+  .shot .x { position: absolute; right: 4px; top: 4px; font-size: 11px; padding: 1px 6px; }
+  textarea {
+    width: 100%; background: #0e1116; color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; font: 13px/1.5 ui-monospace, Menlo, monospace; resize: vertical;
+  }
+  input[type=text] { background: #0e1116; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 13px ui-monospace, Menlo, monospace; }
+  .fgroup { margin-bottom: 10px; }
+  .fgroup > .ft { font-size: 12px; color: var(--dim); margin: 6px 0; }
+  .frow { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--panel2); margin-bottom: 6px; flex-wrap: wrap; }
+  .frow .fname { flex: 0 0 auto; font-size: 13px; }
+  .frow .falg { font: 600 14px ui-monospace, Menlo, monospace; color: #ffd166; word-break: break-all; }
+  .frow .fuse { flex: 1 1 140px; color: var(--dim); font-size: 12px; }
+  .frow button { padding: 4px 9px; font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; background: #23303f; color: var(--accent); font-size: 11.5px; margin-left: 6px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #24405f; color: #fff; padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>桥式（Roux）分步还原</h1>
+  <span class="sub">跟着屏幕走，用「下一步」一步一步还原；魔方会把每一步真的转给你看。</span>
+  <span class="sub" style="margin-left:auto" id="buildTag"></span>
+</header>
+
+<div class="wrap">
+  <div class="left">
+    <div class="card">
+      <h2>魔方视图（拖动可旋转）</h2>
+      <div class="scene" id="scene">
+        <div class="stage3d" id="stage3d">
+          <div class="cube" id="cube"></div>
+        </div>
+        <div class="shadow"></div>
+        <div class="netview" id="netview"></div>
+        <div class="netnote" id="netNote">展开图与「手动填色」的布局完全一致（上 / 左 前 右 后 / 下），可逐格核对</div>
+      </div>
+      <div class="viewbar" id="views"></div>
+      <div class="note" id="visibleFaces">—</div>
+      <div class="viewbar">
+        <button id="btn3d" class="on">立体视图</button>
+        <button id="btnNet">平面展开图</button>
+        <label class="chk">朝向
+          <select id="selOrient" style="background:#1f232c;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12.5px"></select>
+        </label>
+        <label class="chk"><input type="checkbox" id="chkAuto" checked>自动旋转</label>
+        <label class="chk"><input type="checkbox" id="chkAnim" checked>转层动画</label>
+        <label class="chk">每步转动
+          <input type="range" id="rngSpd" min="0.2" max="3" step="0.1" value="1.5">
+          <b id="spdVal" style="color:var(--accent);min-width:44px;display:inline-block">1.5 s</b>
+        </label>
+        <label class="chk">拆步
+          <select id="selChunk" style="background:#1f232c;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12.5px">
+            <option value="1">每步 ≤1 转</option>
+            <option value="2">每步 ≤2 转</option>
+            <option value="3" selected>每步 ≤3 转（推荐）</option>
+            <option value="4">每步 ≤4 转</option>
+            <option value="6">每步 ≤6 转</option>
+            <option value="0">整条公式</option>
+          </select>
+        </label>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="note" id="renderNote"></div>
+    </div>
+
+    <div class="card">
+      <h2>输入我的魔方（拍照读色后粘这里）</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button id="btnImport" class="primary" style="padding:8px 14px;font-size:13px">解析并载入</button>
+        <button id="btnExport" class="ghost">把当前屏幕状态填入</button>
+        <button id="btnClearInput" class="ghost">清空</button>
+      </div>
+      <textarea id="stateInput" rows="3" placeholder="把 54 个字母粘到这里，例如 YYYYYYYYYBBBBBBBBBRRRRRRRRRGGGGGGGGGOOOOOOOOOWWWWWWWWW"></textarea>
+      <div class="hint" id="importMsg"></div>
+      <div class="hint">
+        顺序：<b>上(U) 左(L) 前(F) 右(R) 后(B) 下(D)</b>，每个面 9 格「从左到右、从上到下」；
+        字母表示颜色：<b>W</b>白 <b>Y</b>黄 <b>G</b>绿 <b>B</b>蓝 <b>R</b>红 <b>O</b>橙。空格/换行会自动忽略。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>手动填色（点格子，不依赖照片质量）</h2>
+      <div class="row" id="palette"></div>
+      <div id="painterNet" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnPaintValidate" class="primary" style="padding:8px 14px;font-size:13px">校验并开始还原</button>
+        <button id="btnPaintSolved" class="ghost">填入还原态</button>
+        <button id="btnPaintClear" class="ghost">清空</button>
+        <button id="btnResetAll">重设（清空并重新开始）</button>
+        <span class="hint" id="paintMsg" style="margin:0"></span>
+      </div>
+      <div class="hint">
+        选个颜色（或"橡皮"），在展开图上点格子即可；中心格决定朝向。
+        填满 54 格后点「校验并开始还原」，会做和状态串一样的三重校验。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>拍照 / 选图（把照片送进 <code>photos/</code> 目录）</h2>
+      <div class="row">
+        <button id="btnCam">打开摄像头</button>
+        <button id="btnCamOff" class="ghost">关闭</button>
+        <button id="btnShot1">拍第 1 张（上/前/右）</button>
+        <button id="btnShot2">拍第 2 张（上/后/左）</button>
+        <button id="btnPick" class="ghost">从文件选择…</button>
+        <button id="btnSavePhotos" class="primary" style="padding:8px 14px;font-size:13px">写入 photos/ 目录</button>
+      </div>
+      <div class="camwrap">
+        <video id="cam" playsinline muted></video>
+        <svg class="guide" viewBox="0 0 200 200" aria-hidden="true">
+          <polygon points="100,16 180,63 180,150 100,197 20,150 20,63" fill="none" stroke="#4c9aff" stroke-width="1.6" stroke-dasharray="6 4" opacity=".9"/>
+          <path d="M100 16 L100 100 M100 100 L20 63 M100 100 L180 63" stroke="#4c9aff" stroke-width="1.2" stroke-dasharray="4 4" opacity=".65"/>
+        </svg>
+      </div>
+      <div class="row" id="shotRow"></div>
+      <div class="hint" id="camMsg">第 1 张拍「上/前/右」，第 2 张把魔方绕竖直轴转 180° 后拍「上/后/左」（顶层色始终朝上）。
+        拍完点「写入 photos/ 目录」——Chrome 会直接写进你选的目录，Safari 会改为下载。</div>
+    </div>
+
+    <div class="card">
+      <h2>打乱（练习用）</h2>
+      <div class="scramble" id="scrText">—</div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnNew" class="primary" style="padding:8px 14px;font-size:13px">重新打乱</button>
+        <button id="btnCopy" class="ghost">复制打乱</button>
+        <button id="btnReset" class="ghost">回到打乱状态</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="scrInput" class="grow" placeholder="也可粘贴自定义打乱，例如：R U R' F2 D L' …">
+        <button id="btnApply">应用</button>
+      </div>
+      <div class="hint">先把这串打乱做在你的实体魔方上（朝向随意，但全局配色要固定），再跟着下面的步骤走。</div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="card">
+      <h2>阶段</h2>
+      <div class="tabs" id="tabs"></div>
+      <div class="hint" id="stageHint"></div>
+    </div>
+
+    <div class="card">
+      <h2>下一步</h2>
+      <div class="nextbox">
+        <div class="nextname"><span id="nextName">计算中…</span><span class="stage" id="nextStage"></span></div>
+        <div class="moves" id="nextMoves"></div>
+        <div class="hint" id="nextHint"></div>
+        <div class="nowmove" id="nowMove"></div>
+        <div class="row" style="margin-top:12px">
+          <button id="btnPrev">← 上一步</button>
+          <button id="btnNext" class="primary">下一步 →</button>
+          <button id="btnPause" disabled>暂停 ⏸</button>
+          <button id="btnPlayStage" class="ghost">自动播放本阶段</button>
+        </div>
+      </div>
+      <div class="hint" id="progress"></div>
+    </div>
+
+    <div class="card">
+      <h2>公式表（本工具总共只用这几条）</h2>
+      <div id="formulaList"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnPrint">打开打印版公式表（可另存 PDF）</button>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        <b>记法</b>：字母 = 该层顺时针（从这面外侧看），<b>'</b> = 逆时针，<b>2</b> = 180°；
+        <b>M</b> = 中间层（跟 L 同向），<b>r</b> = 右两层（= R + M'）。
+        不确定就点「试转」——会转给你看，然后自动转回原样。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>状态校验（引擎实时判定）</h2>
+      <div class="status" id="status"></div>
+      <div class="hint">这些判定就是"你做对了没有"的标准：左桥/右桥看 1×2×3 是否归位，CMLL 看顶层角块，LSE 看整颗魔方。</div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnSelfCheck" class="ghost">画面自检（画面 vs 引擎）</button>
+        <span class="hint" id="checkMsg" style="margin:0"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>完整计划（点任意一步可跳转）</h2>
+      <div class="plan" id="plan"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
